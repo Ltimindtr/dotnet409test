@@ -3,10 +3,10 @@ name: Build and Push Docker Image to ACR
 on:
   push:
     branches:
-      - main  # Trigger the workflow on push to the 'main' branch
+      - master  # Trigger the workflow on push to the 'main' branch
   pull_request:
     branches:
-      - main  # Trigger on pull requests targeting the 'main' branch
+      - master  # Trigger on pull requests targeting the 'main' branch
 
 jobs:
   build:
