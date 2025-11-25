@@ -17,23 +17,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # Step 2: Set up Azure CLI
-      - name: Set up Azure CLI
-        uses: azure/setup-azure-cli@v1  # Correct action to set up Azure CLI
-
-      # Step 3: Log in to Azure CLI using the service principal
-      - name: Log in to Azure
+      # Step 2: Docker login to Azure Container Registry (ACR)
+      - name: Docker login to ACR
         run: |
-          az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
+          echo ${{ secrets.AZURE_CLIENT_SECRET }} | docker login ${{ secrets.AZURE_ACR_NAME }}.azurecr.io -u ${{ secrets.AZURE_CLIENT_ID }} --password-stdin
 
-      # Step 4: Log in to Azure Container Registry (ACR)
-      - name: Log in to Azure Container Registry
-        run: |
-          az acr login --name ${{ secrets.AZURE_ACR_NAME }}
-
-      # Step 5: Build Docker image
+      # Step 3: Build Docker image from Dockerfile
       - name: Build Docker image
         run: |
           docker build -t ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest .
 
-      # Step 6: Pus
+      # Step 4: Push Docker image to ACR
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest
