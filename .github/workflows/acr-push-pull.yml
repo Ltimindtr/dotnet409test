@@ -1,0 +1,42 @@
+name: Build and Push Docker Image to ACR
+
+on:
+  push:
+    branches:
+      - main  # Trigger the workflow on push to the 'main' branch
+  pull_request:
+    branches:
+      - main  # Trigger on pull requests targeting the 'main' branch
+
+jobs:
+  build:
+    runs-on: windows-latest  # Windows runner for building Windows containers
+
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Step 2: Set up Azure CLI to authenticate
+      - name: Set up Azure CLI
+        uses: azure/setup-azurecli@v1
+
+      # Step 3: Log in to Azure CLI
+      - name: Log in to Azure
+        run: |
+          az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
+
+      # Step 4: Log in to ACR
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.AZURE_ACR_NAME }}
+
+      # Step 5: Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest .
+
+      # Step 6: Push Docker image to ACR
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest
