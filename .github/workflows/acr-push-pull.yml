@@ -19,15 +19,15 @@ jobs:
 
       # Step 2: Set up Azure CLI
       - name: Set up Azure CLI
-        uses: azure/cli-action@v1  # Updated action to set up Azure CLI
+        uses: azure/setup-azure-cli@v1  # Correct action to set up Azure CLI
 
-      # Step 3: Log in to Azure using Service Principal
+      # Step 3: Log in to Azure CLI using the service principal
       - name: Log in to Azure
         run: |
           az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
 
-      # Step 4: Log in to Azure Container Registry
-      - name: Log in to Azure Container Registry (ACR)
+      # Step 4: Log in to Azure Container Registry (ACR)
+      - name: Log in to Azure Container Registry
         run: |
           az acr login --name ${{ secrets.AZURE_ACR_NAME }}
 
@@ -36,7 +36,4 @@ jobs:
         run: |
           docker build -t ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest .
 
-      # Step 6: Push Docker image to ACR
-      - name: Push Docker image to ACR
-        run: |
-          docker push ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest
+      # Step 6: Pus
