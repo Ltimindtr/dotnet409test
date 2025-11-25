@@ -3,10 +3,10 @@ name: Build and Push Docker Image to ACR
 on:
   push:
     branches:
-      - master  # Trigger the workflow on push to the 'main' branch
+      - master  # Trigger the workflow on commit to the 'master' branch
   pull_request:
     branches:
-      - master  # Trigger on pull requests targeting the 'main' branch
+      - master  # Trigger on pull requests targeting the 'master' branch
 
 jobs:
   build:
@@ -17,17 +17,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # Step 2: Set up Azure CLI to authenticate
+      # Step 2: Set up Azure CLI
       - name: Set up Azure CLI
-        uses: azure/setup-azurecli@v1
+        uses: azure/cli-action@v1  # Updated action to set up Azure CLI
 
-      # Step 3: Log in to Azure CLI
+      # Step 3: Log in to Azure using Service Principal
       - name: Log in to Azure
         run: |
           az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
 
-      # Step 4: Log in to ACR
-      - name: Log in to Azure Container Registry
+      # Step 4: Log in to Azure Container Registry
+      - name: Log in to Azure Container Registry (ACR)
         run: |
           az acr login --name ${{ secrets.AZURE_ACR_NAME }}
 
