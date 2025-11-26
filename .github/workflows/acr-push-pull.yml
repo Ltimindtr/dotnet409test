@@ -1,33 +1,57 @@
-name: Build and Push Docker Image to ACR
+
+name: Build and Push Docker Image to ACR (Windows, OIDC)
 
 on:
   push:
-    branches:
-      - master  # Trigger the workflow on commit to the 'master' branch
+    branches: [ master ]
   pull_request:
-    branches:
-      - master  # Trigger on pull requests targeting the 'master' branch
+    branches: [ master ]
 
 jobs:
   build:
-    runs-on: windows-latest  # Windows runner for building Windows containers
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-      # Step 1: Checkout the code
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      # Step 2: Docker login to Azure Container Registry (ACR)
-      - name: Docker login to ACR
+      # Optional: quick DNS sanity check for the registry name
+      - name: DNS check for ACR
+        shell: powershell
         run: |
-          echo ${{ secrets.AZURE_CLIENT_SECRET }} | docker login ${{ secrets.AZURE_ACR_NAME }}.azurecr.io -u ${{ secrets.AZURE_CLIENT_ID }} --password-stdin
+          Write-Host "Testing DNS for $env:REG.azurecr.io"
+        env:
+          REG: ${{ secrets.AZURE_ACR_NAME }}
 
-      # Step 3: Build Docker image from Dockerfile
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest .
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Step 4: Push Docker image to ACR
-      - name: Push Docker image to ACR
+      # Use Azure CLI to log Docker into ACR using the logged-in identity
+      - name: ACR login via Azure CLI
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az acr login --name ${{ secrets.AZURE_ACR_NAME }}
+
+      - name: Build Docker image (Windows container)
+        shell: powershell
         run: |
-          docker push ${{ secrets.AZURE_ACR_NAME }}.azurecr.io/my-static-site:latest
+          docker build `
+            -t $env:REG.azurecr.io/my-static-site:latest `
+            .
+        env:
+          REG: ${{ secrets.AZURE_ACR_NAME }}
+
+      - name: Push image to ACR
+        shell: powershell
+        run: |
+          docker push $env:REG.azurecr.io/my-static-site:latest
+        env:
+          REG: ${{ secrets.AZURE_ACR_NAME }}
