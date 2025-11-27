@@ -56,7 +56,7 @@ jobs:
         shell: powershell
         if: github.ref == 'refs/heads/master'
         run: |
-          $REG   = "$($env:ACR_NAME).azurecr.io"      # <-- FQDN used for tagging
+          $REG   = "$($env:ACR_NAME)"      # <-- FQDN used for tagging
           $SHA7  = $env:IMAGE_TAG_SHA.Substring(0,7)
           $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
