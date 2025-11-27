@@ -63,14 +63,15 @@ jobs:
           $IMAGE_SHA = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
 
-          Write-Host "Building:"
+          Write-Host "Building Docker image with the following tags:"
           Write-Host "  $IMAGE_SHA"
           Write-Host "  $IMAGE_LATEST"
 
-          docker build `
-            -t $IMAGE_SHA `
-            -t $IMAGE_LATEST `
-            .
+          # Build Docker image and tag it
+          docker build -t $IMAGE_SHA -t $IMAGE_LATEST .
+
+          # List images to verify build and tags
+          docker images | Where-Object { $_.Repository -eq $env:IMAGE_NAME }
 
       # Push Docker image to ACR
       - name: Push image to ACR
@@ -82,8 +83,10 @@ jobs:
           $IMAGE_SHA = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
 
-          Write-Host "Pushing:"
+          Write-Host "Pushing Docker images to ACR:"
           Write-Host "  $IMAGE_SHA"
           Write-Host "  $IMAGE_LATEST"
 
+          # Push the images to ACR
           docker push $IMAGE_SHA
+          docker push $IMAGE_LATEST
