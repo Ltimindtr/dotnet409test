@@ -33,6 +33,7 @@ jobs:
         run: |
           $fqdn = "$($env:ACR_NAME)"
           Write-Host "Testing DNS for $fqdn"
+          Write-Host "ACR_NAME (short): $env:ACR_NAME"
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
           } catch {
