@@ -85,6 +85,7 @@ jobs:
           Write-Host "Pushing Docker images to ACR:"
           Write-Host "  $IMAGE_SHA"
           Write-Host "  $IMAGE_LATEST"
+          Write-Host "Current Directory: $(Get-Location)"
 
           docker push $IMAGE_SHA
           docker push $IMAGE_LATEST
