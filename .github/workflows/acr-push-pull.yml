@@ -73,6 +73,10 @@ jobs:
           docker image inspect $IMAGE_SHA     | Out-Null
           docker image inspect $IMAGE_LATEST  | Out-Null
 
+          docker tag hello-aspnet48:8bc80cb ***.azurecr.io/hello-aspnet48:8bc80cb
+          docker tag hello-aspnet48:latest ***.azurecr.io/hello-aspnet48:latest
+
+
       - name: Push image to ACR
         shell: powershell
         if: github.ref == 'refs/heads/master'
