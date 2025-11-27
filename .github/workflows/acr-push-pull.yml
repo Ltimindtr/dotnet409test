@@ -1,57 +1,103 @@
 
-name: Build and Push Docker Image to ACR (Windows, OIDC)
+name: Build & Push Docker Image to ACR (Windows, OIDC)
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
     branches: [ master ]
 
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      id-token: write
+      id-token: write     # Required for OIDC
       contents: read
+
+    env:
+      # Required secrets
+      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ACR_NAME:               ${{ secrets.AZURE_ACR_NAME }}
+
+      # Image naming
+      IMAGE_NAME: hello-aspnet48        # change if needed
+      IMAGE_TAG_SHA: ${{ github.sha }}
+      IMAGE_LATEST: latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Optional: quick DNS sanity check for the registry name
+      # Optional: fail fast if any secret is missing
+      - name: Validate required variables
+        shell: powershell
+        run: |
+          $vars = @(
+            @{ n = 'AZURE_CLIENT_ID';       v = $env:AZURE_CLIENT_ID },
+            @{ n = 'AZURE_TENANT_ID';       v = $env:AZURE_TENANT_ID },
+            @{ n = 'AZURE_SUBSCRIPTION_ID'; v = $env:AZURE_SUBSCRIPTION_ID },
+            @{ n = 'ACR_NAME';              v = $env:ACR_NAME }
+          )
+          $missing = $vars | Where-Object { -not $_.v }
+          if ($missing.Count -gt 0) {
+            Write-Error ("Missing required secrets: " + ($missing.n -join ', '))
+            exit 1
+          }
+
+      # Quick DNS sanity check (helpful if ACR is private/PE + private DNS)
       - name: DNS check for ACR
         shell: powershell
         run: |
-          Write-Host "Testing DNS for $env:REG.azurecr.io"
-        env:
-          REG: ${{ secrets.AZURE_ACR_NAME }}
+          $fqdn = "$($env:ACR_NAME).azurecr.io"
+          Write-Host "Testing DNS for $fqdn"
+          try {
+            Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
+          } catch {
+            Write-Warning "DNS resolution failed for $fqdn. Ensure runner can resolve private DNS if using PE."
+          }
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          auth-type: 'oidc'
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      # Use Azure CLI to log Docker into ACR using the logged-in identity
-      - name: ACR login via Azure CLI
+      - name: ACR login via Azure CLI (uses OIDC identity)
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az acr login --name ${{ secrets.AZURE_ACR_NAME }}
+            az acr login --name ${{ env.ACR_NAME }}
 
       - name: Build Docker image (Windows container)
         shell: powershell
         run: |
+          $REG = "$($env:ACR_NAME).azurecr.io"
+          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Building:"
+          Write-Host "  $IMAGE_SHA"
+          Write-Host "  $IMAGE_LATEST"
+
           docker build `
-            -t $env:REG.azurecr.io/my-static-site:latest `
+            -t $IMAGE_SHA `
+            -t $IMAGE_LATEST `
             .
-        env:
-          REG: ${{ secrets.AZURE_ACR_NAME }}
 
       - name: Push image to ACR
         shell: powershell
         run: |
-          docker push $env:REG.azurecr.io/my-static-site:latest
-        env:
-          REG: ${{ secrets.AZURE_ACR_NAME }}
+          $REG = "$($env:ACR_NAME).azurecr.io"
+          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Pushing:"
+          Write-Host "  $IMAGE_SHA"
+          Write-Host "  $IMAGE_LATEST"
+
+          docker push $IMAGE_SHA
+          docker push $IMAGE_LATEST
