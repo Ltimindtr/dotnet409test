@@ -9,18 +9,16 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      id-token: write     # Required for OIDC
+      id-token: write      # REQUIRED for OIDC
       contents: read
 
     env:
-      # Required secrets
       AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ACR_NAME:               ${{ secrets.AZURE_ACR_NAME }}
 
-      # Image naming
-      IMAGE_NAME: hello-aspnet48        # change if needed
+      IMAGE_NAME:   hello-aspnet48
       IMAGE_TAG_SHA: ${{ github.sha }}
       IMAGE_LATEST: latest
 
@@ -28,24 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Optional: fail fast if any secret is missing
-      - name: Validate required variables
-        shell: powershell
-        run: |
-          $vars = @(
-            @{ n = 'AZURE_CLIENT_ID';       v = $env:AZURE_CLIENT_ID },
-            @{ n = 'AZURE_TENANT_ID';       v = $env:AZURE_TENANT_ID },
-            @{ n = 'AZURE_SUBSCRIPTION_ID'; v = $env:AZURE_SUBSCRIPTION_ID },
-            @{ n = 'ACR_NAME';              v = $env:ACR_NAME }
-          )
-          $missing = $vars | Where-Object { -not $_.v }
-          if ($missing.Count -gt 0) {
-            Write-Error ("Missing required secrets: " + ($missing.n -join ', '))
-            exit 1
-          }
-
-      # Quick DNS sanity check (helpful if ACR is private/PE + private DNS)
-      - name: DNS check for ACR
+      - name: DNS check for ACR (optional)
         shell: powershell
         run: |
           $fqdn = "$($env:ACR_NAME).azurecr.io"
@@ -53,24 +34,27 @@ jobs:
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
           } catch {
-            Write-Warning "DNS resolution failed for $fqdn. Ensure runner can resolve private DNS if using PE."
+            Write-Warning "DNS resolution failed for $fqdn. If ACR uses Private Endpoint & private DNS, use a self-hosted runner in the VNet."
           }
 
+      # ✅ OIDC login: DO NOT set 'auth-type'. Just provide IDs.
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          auth-type: 'oidc'
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          client-id:       ${{ env.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          # environment defaults to 'azurecloud'; omit audience (default is AzureADTokenExchange)
+          allow-no-subscriptions: false
+          enable-AzPSSession: false
 
-      - name: ACR login via Azure CLI (uses OIDC identity)
+      - name: ACR login (uses OIDC identity)
         uses: azure/cli@v2
         with:
           inlineScript: |
             az acr login --name ${{ env.ACR_NAME }}
 
-      - name: Build Docker image (Windows container)
+      - name: Build Docker image (Windows)
         shell: powershell
         run: |
           $REG = "$($env:ACR_NAME).azurecr.io"
@@ -100,4 +84,3 @@ jobs:
           Write-Host "  $IMAGE_LATEST"
 
           docker push $IMAGE_SHA
-          docker push $IMAGE_LATEST
