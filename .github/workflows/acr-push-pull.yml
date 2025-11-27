@@ -35,4 +35,57 @@ jobs:
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
           } catch {
-            Write-Warning "DNS resolution failed fo
+            Write-Warning "DNS resolution failed for $fqdn. If ACR uses Private Endpoint & private DNS, use a self-hosted runner in the VNet."
+          }
+
+      # Azure login using OIDC
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ env.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: false
+          enable-AzPSSession: false
+
+      # ACR login using OIDC identity
+      - name: ACR login (uses OIDC identity)
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az acr login --name ${{ env.ACR_NAME }}
+
+      # Build Docker image for Windows only when changes are pushed to master branch
+      - name: Build Docker image (Windows)
+        shell: powershell
+        if: github.ref == 'refs/heads/master'  # Only runs when changes are pushed to master
+        run: |
+          $REG = "$($env:ACR_NAME)"
+          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Building:"
+          Write-Host "  $IMAGE_SHA"
+          Write-Host "  $IMAGE_LATEST"
+
+          docker build `
+            -t $IMAGE_SHA `
+            -t $IMAGE_LATEST `
+            .
+
+      # Push Docker image to ACR only when changes are pushed to master branch
+      - name: Push image to ACR
+        shell: powershell
+        if: github.ref == 'refs/heads/master'  # Only runs when changes are pushed to master
+        run: |
+          $REG = "$($env:ACR_NAME).azurecr.io"
+          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Pushing:"
+          Write-Host "  $IMAGE_SHA"
+          Write-Host "  $IMAGE_LATEST"
+
+          docker push $IMAGE_SHA
