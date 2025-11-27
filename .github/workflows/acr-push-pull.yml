@@ -36,7 +36,14 @@ jobs:
           } catch {
             Write-Warning "DNS resolution failed for $fqdn. If ACR uses Private Endpoint & private DNS, use a self-hosted runner in the VNet."
           }
+          
+      #az login trial 
+      - name: Azure login (via CLI)
+        uses: azure/cli@v2
+        with:
+          inlineScript: az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
 
+      
       # ✅ OIDC login: DO NOT set 'auth-type'. Just provide IDs.
       - name: Azure login (OIDC)
         uses: azure/login@v2
