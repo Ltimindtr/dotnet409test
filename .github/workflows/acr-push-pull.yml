@@ -1,4 +1,4 @@
-name: Build & Push Docker Image to ACR (Windows, OIDC)
+name: Build & Push Docker Image to ACR (Windows, Service Principal)
 
 on:
   push:
@@ -7,9 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-latest  # Use Windows-based runner for Windows containers
+
     permissions:
-      id-token: write      # REQUIRED for OIDC
+      id-token: write      # REQUIRED for OIDC (if you're using OIDC login)
       contents: read
 
     env:
@@ -17,10 +18,9 @@ jobs:
       AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ACR_NAME:               ${{ secrets.AZURE_ACR_NAME }}
-
-      IMAGE_NAME:   hello-aspnet48
-      IMAGE_TAG_SHA: ${{ github.sha }}
-      IMAGE_LATEST: latest
+      IMAGE_NAME:             hello-aspnet48
+      IMAGE_TAG_SHA:         ${{ github.sha }}
+      IMAGE_LATEST:          latest
 
     steps:
       - name: Checkout repository
@@ -38,31 +38,29 @@ jobs:
             Write-Warning "DNS resolution failed for $fqdn. If ACR uses Private Endpoint & private DNS, use a self-hosted runner in the VNet."
           }
 
-      # Azure login using OIDC
-      - name: Azure login (OIDC)
+      # Azure login using Service Principal for Windows runners (uses secrets for client-id and client-secret)
+      - name: Azure login (Service Principal)
         uses: azure/login@v2
         with:
-          client-id:       ${{ env.AZURE_CLIENT_ID }}
-          tenant-id:       ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-          allow-no-subscriptions: false
-          enable-AzPSSession: false
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          client-secret:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ACR login using OIDC identity
-      - name: ACR login (uses OIDC identity)
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az acr login --name ${{ env.ACR_NAME }}
+      # ACR login using Azure CLI
+      - name: ACR login (uses Service Principal)
+        shell: powershell
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
 
-      # Build Docker image for Windows only when changes are pushed to master branch
+      # Build Docker image for Windows (only when changes are pushed to master)
       - name: Build Docker image (Windows)
         shell: powershell
         if: github.ref == 'refs/heads/master'  # Only runs when changes are pushed to master
         run: |
           $REG = "$($env:ACR_NAME)"
           $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
-          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_SHA = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
 
           Write-Host "Building:"
@@ -74,14 +72,14 @@ jobs:
             -t $IMAGE_LATEST `
             .
 
-      # Push Docker image to ACR only when changes are pushed to master branch
+      # Push Docker image to ACR
       - name: Push image to ACR
         shell: powershell
         if: github.ref == 'refs/heads/master'  # Only runs when changes are pushed to master
         run: |
           $REG = "$($env:ACR_NAME).azurecr.io"
           $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
-          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMAGE_SHA = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
 
           Write-Host "Pushing:"
