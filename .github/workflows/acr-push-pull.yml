@@ -1,9 +1,9 @@
-
 name: Build & Push Docker Image to ACR (Windows, OIDC)
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master  # This triggers the workflow only on changes to the master branch
 
 jobs:
   build:
@@ -26,6 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # DNS check for ACR (optional)
       - name: DNS check for ACR (optional)
         shell: powershell
         run: |
@@ -34,60 +35,4 @@ jobs:
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
           } catch {
-            Write-Warning "DNS resolution failed for $fqdn. If ACR uses Private Endpoint & private DNS, use a self-hosted runner in the VNet."
-          }
-          
-      #az login trial 
-      - name: Azure login (via CLI)
-        uses: azure/cli@v2
-        with:
-          inlineScript: az login --service-principal -u ${{ secrets.AZURE_CLIENT_ID }} -p ${{ secrets.AZURE_CLIENT_SECRET }} --tenant ${{ secrets.AZURE_TENANT_ID }}
-
-      
-      # ✅ OIDC login: DO NOT set 'auth-type'. Just provide IDs.
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id:       ${{ env.AZURE_CLIENT_ID }}
-          tenant-id:       ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-          # environment defaults to 'azurecloud'; omit audience (default is AzureADTokenExchange)
-          allow-no-subscriptions: false
-          enable-AzPSSession: false
-
-      - name: ACR login (uses OIDC identity)
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az acr login --name ${{ env.ACR_NAME }}
-
-      - name: Build Docker image (Windows)
-        shell: powershell
-        run: |
-          $REG = "$($env:ACR_NAME).azurecr.io"
-          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
-          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
-          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
-
-          Write-Host "Building:"
-          Write-Host "  $IMAGE_SHA"
-          Write-Host "  $IMAGE_LATEST"
-
-          docker build `
-            -t $IMAGE_SHA `
-            -t $IMAGE_LATEST `
-            .
-
-      - name: Push image to ACR
-        shell: powershell
-        run: |
-          $REG = "$($env:ACR_NAME).azurecr.io"
-          $SHA7 = $env:IMAGE_TAG_SHA.Substring(0,7)
-          $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
-          $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
-
-          Write-Host "Pushing:"
-          Write-Host "  $IMAGE_SHA"
-          Write-Host "  $IMAGE_LATEST"
-
-          docker push $IMAGE_SHA
+            Write-Warning "DNS resolution failed fo
