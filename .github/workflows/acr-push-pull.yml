@@ -31,7 +31,7 @@ jobs:
       - name: DNS check for ACR (optional)
         shell: powershell
         run: |
-          $fqdn = "$($env:ACR_NAME).azurecr.io"
+          $fqdn = "$($env:ACR_NAME)"
           Write-Host "Testing DNS for $fqdn"
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
