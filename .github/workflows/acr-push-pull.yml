@@ -65,6 +65,7 @@ jobs:
           Write-Host "Building Docker image with tags:"
           Write-Host "  $IMAGE_SHA"
           Write-Host "  $IMAGE_LATEST"
+          Write-Host "Current Directory: $(Get-Location)"
 
           docker build -t $IMAGE_SHA -t $IMAGE_LATEST .
 
