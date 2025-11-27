@@ -73,8 +73,11 @@ jobs:
           docker image inspect $IMAGE_SHA     | Out-Null
           docker image inspect $IMAGE_LATEST  | Out-Null
 
-          docker tag hello-aspnet48:8bc80cb ***.azurecr.io/hello-aspnet48:8bc80cb
-          docker tag hello-aspnet48:latest ***.azurecr.io/hello-aspnet48:latest
+          $IMAGE_ID = $(docker images --filter "reference=$IMAGE_SHA" --format "{{.ID}}")
+
+          # Tagging with the correct image ID
+          docker tag $IMAGE_ID $IMAGE_SHA
+          docker tag $IMAGE_ID $IMAGE_LATEST
 
 
       - name: Push image to ACR
