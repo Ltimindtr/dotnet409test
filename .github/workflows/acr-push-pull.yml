@@ -1,125 +1,91 @@
-name: Build & Push to Azure Container Registry (OIDC)
+
+name: Build & Push Docker Image to ACR (Windows Service Principal)
 
 on:
-  workflow_dispatch:
-    inputs:
-      image_name:
-        description: "Repository name in ACR (e.g., hello-aspnet48 or myapp)"
-        required: true
-        default: hello-aspnet48
-      dockerfile:
-        description: "Path to Dockerfile"
-        required: true
-        default: Dockerfilea
-      context:
-        description: "Docker build context"
-        required: true
-        default: .
   push:
-    branches: [ main ]
-    paths:
-      - "Dockerfile"
-      - "**/*.csproj"
-      - "**/*.sln"
-      - "**/*.ps1"
-      - "**/*.config"
-      - "**/*.yml"
-      - "**/*.yaml"
-      - "src/**"
-      - "app/**"
-
-permissions:
-  id-token: write
-  contents: read
-
-env:
-  # Your ACR **resource name** (not the login server)
-  # If the exact spelling is dotnet409scr, update this value.
-  ACR_NAME: dotent409scr
-
-  # When push triggers (not workflow_dispatch), use this default image repo name:
-  DEFAULT_IMAGE_NAME: hello-aspnet48
-
-  # Enable Docker Buildx on Linux runners for better caching (ignored on Windows)
-  USE_BUILDX: "true"
+    branches: [ master ]
 
 jobs:
-  build-and-push:
-    # Pick one runner OS. Windows for Windows container images (e.g., ASP.NET 4.8),
-    # Ubuntu for Linux images (e.g., WordPress, .NET 8).
-    strategy:
-      matrix:
-        os: [windows-latest]
-        # os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  build:
+    runs-on: windows-latest
+    permissions:
+      id-token: write   # harmless, enabled; useful if you later switch to OIDC
+      contents: read
 
-    concurrency:
-      group: acr-publish-${{ github.ref }}-${{ matrix.os }}
-      cancel-in-progress: false
+    env:
+      # Service Principal credentials (populate in repo env or use secrets-to-env mapping)
+      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_SECRET:    ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ACR and image info
+      ACR_NAME:        ${{ secrets.ACR_NAME }}         # e.g., myregistry
+      IMAGE_NAME:      hello-aspnet48
+      IMAGE_TAG_SHA:   ${{ github.sha }}
+      IMAGE_LATEST:    latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine IMAGE_NAME and tags
-        id: meta
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            IMAGE_NAME="${{ github.event.inputs.image_name }}"
-            DOCKERFILE="${{ github.event.inputs.dockerfile }}"
-            CONTEXT="${{ github.event.inputs.context }}"
-          else
-            IMAGE_NAME="${DEFAULT_IMAGE_NAME}"
-            DOCKERFILE="Dockerfile"
-            CONTEXT="."
-          fi
-          SHA7="${GITHUB_SHA:0:7}"
-          echo "image_name=${IMAGE_NAME}"  >> $GITHUB_OUTPUT
-          echo "dockerfile=${DOCKERFILE}" >> $GITHUB_OUTPUT
-          echo "context=${CONTEXT}"       >> $GITHUB_OUTPUT
-          echo "sha_tag=${SHA7}"          >> $GITHUB_OUTPUT
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Get ACR login server (az acr show)
-        id: acr
-        shell: bash
-        run: |
-          LOGIN_SERVER=$(az acr show -n "${ACR_NAME}" --query loginServer -o tsv)
-          if [[ -z "${LOGIN_SERVER}" ]]; then
-            echo "Failed to resolve ACR login server for ${ACR_NAME}" >&2
-            exit 1
-          fi
-          echo "login_server=${LOGIN_SERVER}" >> $GITHUB_OUTPUT
-          echo "ACR login server: ${LOGIN_SERVER}"
-
-      # --- DNS sanity checks ---
-      - name: DNS check (Windows, PowerShell)
-        if: matrix.os == 'windows-latest'
+      - name: DNS check for ACR (optional)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $fqdn = '${{ steps.acr.outputs.login_server }}'
+          if (-not $env:ACR_NAME) { throw "ACR_NAME not set" }
+          $fqdn = "$($env:ACR_NAME).azurecr.io"
           Write-Host "Testing DNS for $fqdn"
-          Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table | Out-String | Write-Host
-          try {
-            Resolve-DnsName $fqdn -Server 1.1.1.1 -ErrorAction Stop | Format-Table | Out-String | Write-Host
-          } catch {
-            Write-Warning "Public resolver check failed; continuing since default resolver worked."
-          }
+          Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
 
-      - name: DNS check (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          client-id:        ${{ env.AZURE_CLIENT_ID }}
+          tenant-id:        ${{ env.AZURE_TENANT_ID }}
+          client-secret:    ${{ env.AZURE_CLIENT_SECRET }}
+          subscription-id:  ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login (Service Principal)
+        shell: pwsh
         run: |
-          FQDN="${{ steps.acr.outputs.login_server }}"
-          echo "Testing DNS for ${FQDN}"
-          getent ahosts "${FQDN}" || (echo "getent DNS failed" && exit 1)
-          host "${FQDN}" || true
-          nslookup "${FQDN}" || true
+          $ErrorActionPreference = 'Stop'
+          az acr login --name $env:ACR_NAME
+
+      - name: Build Docker image (Windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:IMAGE_TAG_SHA) { throw "IMAGE_TAG_SHA not set" }
+          $REG   = "$($env:ACR_NAME).azurecr.io"   # <-- FQDN
+          $SHA7  = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMG_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMG_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Building Docker image with tags:"
+          Write-Host "  $IMG_SHA"
+          Write-Host "  $IMG_LATEST"
+          Write-Host "Current Directory: $(Get-Location)"
+
+          docker build -t $IMG_SHA -t $IMG_LATEST .
+
+          # Fail fast if tags not present locally
+          docker image inspect $IMG_SHA    | Out-Null
+          docker image inspect $IMG_LATEST | Out-Null
+
+      - name: Push image to ACR
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $REG   = "$($env:ACR_NAME).azurecr.io"
+          $SHA7  = $env:IMAGE_TAG_SHA.Substring(0,7)
+          $IMG_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
+          $IMG_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
+
+          Write-Host "Pushing Docker images to ACR:"
+          Write-Host "  $IMG_SHA"
+          Write-Host "  $IMG_LATEST"
+          Write-Host "Current Directory: $(Get-Location)"
+
+          docker push $IMG_SHA
+          docker push $IMG_LATEST
