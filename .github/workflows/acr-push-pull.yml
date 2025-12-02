@@ -20,7 +20,7 @@ jobs:
       AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # ACR and image info
-      ACR_NAME:        ${{ secrets.ACR_NAME }}         # e.g., myregistry
+      ACR_NAME:        ${{ secrets.AZURE_ACR_NAME }}         # e.g., myregistry
       IMAGE_NAME:      hello-aspnet48
       IMAGE_TAG_SHA:   ${{ github.sha }}
       IMAGE_LATEST:    latest
