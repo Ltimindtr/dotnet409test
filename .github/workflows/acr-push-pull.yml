@@ -1,4 +1,3 @@
-
 name: Build & Push to Azure Container Registry (OIDC)
 
 on:
@@ -11,7 +10,7 @@ on:
       dockerfile:
         description: "Path to Dockerfile"
         required: true
-        default: Dockerfile
+        default: Dockerfilea
       context:
         description: "Docker build context"
         required: true
