@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
 
     permissions:
-      id-token: write      # harmless here; required if you switch to OIDC later
+      id-token: write      # harmless here; useful if you switch to OIDC later
       contents: read
 
     env:
@@ -29,11 +29,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: DNS check for ACR (optional)
-        shell: powershell
+        shell: pwsh
         run: |
-          $fqdn = "$($env:ACR_NAME)"
+          $ErrorActionPreference = 'Stop'
+          $fqdn = "$($env:ACR_NAME).azurecr.io"
           Write-Host "Testing DNS for $fqdn"
-          Write-Host "ACR_NAME (short): $env:ACR_NAME"
+          Write-Host "ACR_NAME: $env:ACR_NAME"
           try {
             Resolve-DnsName $fqdn -ErrorAction Stop | Format-Table
           } catch {
@@ -49,15 +50,24 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR login (Service Principal)
-        shell: powershell
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:ACR_NAME) { throw "ACR_NAME is not set" }
           az acr login --name $env:ACR_NAME
 
       - name: Build Docker image (Windows)
-        shell: powershell
+        shell: pwsh
         if: github.ref == 'refs/heads/master'
         run: |
-          $REG   = "$($env:ACR_NAME)"      # <-- FQDN used for tagging
+          $ErrorActionPreference = 'Stop'
+
+          # Validate required env vars
+          foreach ($v in @('ACR_NAME','IMAGE_NAME','IMAGE_TAG_SHA','IMAGE_LATEST')) {
+            if (-not (Get-Item "Env:$v").Value) { throw "$v is not set" }
+          }
+
+          $REG   = "$($env:ACR_NAME).azurecr.io"   # <-- FQDN used for tagging
           $SHA7  = $env:IMAGE_TAG_SHA.Substring(0,7)
           $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
@@ -73,18 +83,18 @@ jobs:
           docker image inspect $IMAGE_SHA     | Out-Null
           docker image inspect $IMAGE_LATEST  | Out-Null
 
-          $IMAGE_ID = $(docker images --filter "reference=$IMAGE_SHA" --format "{{.ID}}")
-
-          # Tagging with the correct image ID
-          docker tag $IMAGE_ID $IMAGE_SHA
-          docker tag $IMAGE_ID $IMAGE_LATEST
-
-
       - name: Push image to ACR
-        shell: powershell
+        shell: pwsh
         if: github.ref == 'refs/heads/master'
         run: |
-          $REG   = "$($env:ACR_NAME).azurecr.io"      # <-- same FQDN
+          $ErrorActionPreference = 'Stop'
+
+          # Validate required env vars
+          foreach ($v in @('ACR_NAME','IMAGE_NAME','IMAGE_TAG_SHA','IMAGE_LATEST')) {
+            if (-not (Get-Item "Env:$v").Value) { throw "$v is not set" }
+          }
+
+          $REG   = "$($env:ACR_NAME).azurecr.io"   # <-- same FQDN as Build step
           $SHA7  = $env:IMAGE_TAG_SHA.Substring(0,7)
           $IMAGE_SHA    = "$REG/$($env:IMAGE_NAME):$SHA7"
           $IMAGE_LATEST = "$REG/$($env:IMAGE_NAME):$($env:IMAGE_LATEST)"
@@ -96,4 +106,3 @@ jobs:
 
           docker push $IMAGE_SHA
           docker push $IMAGE_LATEST
-
